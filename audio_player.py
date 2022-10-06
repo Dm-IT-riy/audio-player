@@ -3,6 +3,7 @@ from os.path import expanduser
 from PyQt5.QtWidgets import *
 from PyQt5.QtMultimedia import *
 from PyQt5.QtCore import *
+from PyQt5.QtGui import QIcon
 
 class MainWindow(QMainWindow):
 	def __init__(self):
@@ -11,9 +12,9 @@ class MainWindow(QMainWindow):
 		self.currentPlaylist = QMediaPlaylist()
 		self.player = QMediaPlayer()
 		self.userAction = -1			#0-stopped, 1-playing 2-paused
-		self.player.mediaStatusChanged.connect(self.qmp_mediaStatusChanged)
+		self.player.positionChanged.connect(self.position_changed)
 		self.player.stateChanged.connect(self.qmp_stateChanged)
-		self.player.positionChanged.connect(self.qmp_positionChanged)
+		self.player.durationChanged.connect(self.duration_changed)
 		self.player.positionChanged.connect(self.qmp_volumeChanged)
 		self.player.setVolume(0)
 
@@ -51,34 +52,46 @@ class MainWindow(QMainWindow):
 	
 	def addControls(self):
 		controlArea = QVBoxLayout()		 #centralWidget
-		seekSliderLayout = QHBoxLayout()
+		time_sliderLayout = QHBoxLayout()
 		seekVolumeLayout = QHBoxLayout() #volume slider
 		controls = QHBoxLayout()
 		playlistCtrlLayout = QHBoxLayout()
 		playlistLayout = QVBoxLayout()
+		playlistControls = QHBoxLayout()
 		
 		#creating buttons
 		playBtn = QPushButton('Play')		#play button
 		pauseBtn = QPushButton('Pause')		#pause button
 		stopBtn = QPushButton('Stop')		#stop button
 		
-		#creating playlist controls
+		#creating play controls
 		prevBtn = QPushButton('Prev Song')
 		nextBtn = QPushButton('Next Song')
-		
-		#creating seek slider
-		seekSlider = QSlider()
-		seekSlider.setMinimum(0)
-		seekSlider.setMaximum(100)
-		seekSlider.setOrientation(Qt.Horizontal)
-		seekSlider.setTracking(False)
-		seekSlider.sliderMoved.connect(self.seekPosition)
-		
-		seekSliderLabel1 = QLabel('0.00')
-		seekSliderLabel2 = QLabel('0.00')
-		seekSliderLayout.addWidget(seekSliderLabel1)
-		seekSliderLayout.addWidget(seekSlider)
-		seekSliderLayout.addWidget(seekSliderLabel2)
+
+		#creating playlist controls
+		addBtn = QPushButton('Add Files')
+		delBtn = QPushButton('Remove')
+		self.playModeBtn = QPushButton('Play Mode')
+		self.playModeBtn.setIcon(QIcon('icons/loop_off.png'))
+
+		# creating time progress widgets
+		self.currentTimeLabel = QLabel()
+		self.currentTimeLabel.setMinimumSize(50, 0)
+		self.currentTimeLabel.setAlignment(Qt.AlignCenter)
+		self.currentTimeLabel.setText(hhmmss(0))
+
+		self.time_slider = QSlider(Qt.Horizontal)
+		self.time_slider.setRange(0, 0)
+		self.time_slider.sliderMoved.connect(self.set_position)
+
+		self.totalTimeLabel = QLabel()
+		self.totalTimeLabel.setMinimumSize(50, 0)
+		self.totalTimeLabel.setAlignment(Qt.AlignCenter)
+		self.totalTimeLabel.setText(hhmmss(0))
+
+		time_sliderLayout.addWidget(self.currentTimeLabel)
+		time_sliderLayout.addWidget(self.time_slider)
+		time_sliderLayout.addWidget(self.totalTimeLabel)
 
 		#creating volume slider
 		volumeSlider = QSlider()
@@ -89,7 +102,11 @@ class MainWindow(QMainWindow):
 		volumeSlider.sliderMoved.connect(self.volumePosition)
 
 		seekVolumeLabel1 = QLabel('0')
+		seekVolumeLabel1.setMinimumSize(50, 0)
+		seekVolumeLabel1.setAlignment(Qt.AlignCenter)
 		seekVolumeLabel2 = QLabel('100')
+		seekVolumeLabel2.setMinimumSize(50, 0)
+		seekVolumeLabel2.setAlignment(Qt.AlignCenter)
 		seekVolumeLayout.addWidget(seekVolumeLabel1)
 		seekVolumeLayout.addWidget(volumeSlider)
 		seekVolumeLayout.addWidget(seekVolumeLabel2)		
@@ -104,7 +121,7 @@ class MainWindow(QMainWindow):
 		controls.addWidget(pauseBtn)
 		controls.addWidget(stopBtn)
 		
-		#playlist control button handlers
+		#play control button handlers
 		prevBtn.clicked.connect(self.prevItemPlaylist)
 		nextBtn.clicked.connect(self.nextItemPlaylist)
 		playlistCtrlLayout.addWidget(prevBtn)
@@ -112,15 +129,24 @@ class MainWindow(QMainWindow):
 
 		#playlist widget
 		self.listWidget = QListWidget()
-		self.listWidget.itemClicked.connect(self.playlistHandler)
+		self.listWidget.itemDoubleClicked.connect(self.playlistHandler)
 		playlistLayout.addWidget(self.listWidget)
+
+		#playlist control button handlers
+		addBtn.clicked.connect(self.openFiles)
+		delBtn.clicked.connect(self.delFile)
+		self.playModeBtn.clicked.connect(self.playback_mode)
+		playlistControls.addWidget(addBtn)
+		playlistControls.addWidget(delBtn)
+		playlistControls.addWidget(self.playModeBtn)
 		
 		#Adding to the vertical layout
-		controlArea.addLayout(seekSliderLayout)
+		controlArea.addLayout(time_sliderLayout)
 		controlArea.addLayout(seekVolumeLayout)
 		controlArea.addLayout(controls)
 		controlArea.addLayout(playlistCtrlLayout)
 		controlArea.addLayout(playlistLayout)
+		controlArea.addLayout(playlistControls)
 		return controlArea
 	
 	def playHandler(self):
@@ -128,9 +154,8 @@ class MainWindow(QMainWindow):
 		self.statusBar().showMessage('Playing')
 		if self.player.state() == QMediaPlayer.StoppedState :
 			if self.player.mediaStatus() == QMediaPlayer.NoMedia:
-				print(self.currentPlaylist.mediaCount())
 				if self.currentPlaylist.mediaCount() == 0:
-					self.openFile()
+					self.openFiles()
 				if self.currentPlaylist.mediaCount() != 0:
 					self.player.setPlaylist(self.currentPlaylist)
 			elif self.player.mediaStatus() == QMediaPlayer.LoadedMedia:
@@ -157,30 +182,25 @@ class MainWindow(QMainWindow):
 			self.player.stop()
 		elif self.player.state() == QMediaPlayer.StoppedState:
 			pass
-		
-	def qmp_mediaStatusChanged(self):
-		if self.player.mediaStatus() == QMediaPlayer.LoadedMedia and self.userAction == 1:
-			durationT = self.player.duration()
-			self.centralWidget().layout().itemAt(0).layout().itemAt(1).widget().setRange(0,durationT)
-			self.centralWidget().layout().itemAt(0).layout().itemAt(2).widget().setText(f'{int(durationT/60000)}:{int((durationT/1000)%60)}')
-			self.player.play()
 			
 	def qmp_stateChanged(self):
 		if self.player.state() == QMediaPlayer.StoppedState:
 			self.player.stop()
-	
-	def qmp_positionChanged(self, position,senderType=False):
-		sliderLayout = self.centralWidget().layout().itemAt(0).layout()
-		if senderType == False:
-			sliderLayout.itemAt(1).widget().setValue(position)
-		#update the text label
-		sliderLayout.itemAt(0).widget().setText(f'{int(position/60000)}:{int((position/1000)%60)}')
-	
-	def seekPosition(self, position):
-		sender = self.sender()
-		if isinstance(sender,QSlider):
-			if self.player.isSeekable():
-				self.player.setPosition(position)
+
+	def position_changed(self, position):
+		self.time_slider.blockSignals(True)
+		self.time_slider.setValue(position)
+		self.time_slider.blockSignals(False)
+		if position >= 0:
+			self.currentTimeLabel.setText(hhmmss(position))
+
+	def duration_changed(self, duration):
+		self.time_slider.setRange(0, duration)
+		if duration >= 0:
+			self.totalTimeLabel.setText(hhmmss(duration))
+
+	def set_position(self, position):
+		self.player.setPosition(position)
 
 	def volumePosition(self, position):
 		sender = self.sender()
@@ -207,14 +227,15 @@ class MainWindow(QMainWindow):
 		fileAc = QAction('Open File',self)
 		fileAc.setShortcut('Ctrl+O')
 		fileAc.setStatusTip('Open File')
-		fileAc.triggered.connect(self.openFile)
+		fileAc.triggered.connect(self.openFiles)
 		return fileAc
-		
-	def openFile(self):
-		fileChoosen = QFileDialog.getOpenFileUrl(self, 'Open Music File', QUrl(expanduser('~')), 'Audio (*.mp3 *.ogg *.wav)')
-		if fileChoosen != None:
-			self.currentPlaylist.addMedia(QMediaContent(fileChoosen[0]))
-			self.listWidget.addItem(fileChoosen[0].fileName())
+
+	def openFiles(self):
+		filesChoosen = QFileDialog.getOpenFileUrls(self, 'Open Music File', QUrl().fromLocalFile(expanduser('~')), 'Audio (*.mp3 *.ogg *.wav)')
+		if filesChoosen != None:
+			for file in filesChoosen[0]:
+				self.currentPlaylist.addMedia(QMediaContent(file))
+				self.listWidget.addItem(file.fileName())
 	
 	def folderOpen(self):
 		folderAc = QAction('Open Folder',self)
@@ -231,12 +252,32 @@ class MainWindow(QMainWindow):
 			while it.hasNext():
 				if it.fileInfo().isDir() == False and it.filePath() != '.':
 					fInfo = it.fileInfo()
-					print(it.filePath(),fInfo.suffix())
 					if fInfo.suffix() in ('mp3','ogg','wav'):
-						print('added file ',fInfo.fileName())
 						self.listWidget.addItem(fInfo.fileName())
 						self.currentPlaylist.addMedia(QMediaContent(QUrl.fromLocalFile(it.filePath())))
 				it.next()
+
+	def delFile(self):
+		index = self.listWidget.currentIndex().row()
+		self.listWidget.takeItem(index)
+		self.currentPlaylist.removeMedia(index)
+
+	def playback_mode(self):
+		if self.currentPlaylist.playbackMode() == QMediaPlaylist.Sequential:
+			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Loop)
+			self.playModeBtn.setIcon(QIcon("icons/loop_on.png"))
+
+		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.Loop:
+			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.CurrentItemInLoop)
+			self.playModeBtn.setIcon(QIcon('icons/item_loop.png'))
+
+		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.CurrentItemInLoop:
+			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Random)
+			self.playModeBtn.setIcon(QIcon('icons/random.png'))
+
+		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.Random:
+			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Sequential)
+			self.playModeBtn.setIcon(QIcon('icons/loop_off.png'))
 
 	def playlistHandler(self):
 		index = self.listWidget.currentIndex().row()
@@ -260,14 +301,26 @@ class MainWindow(QMainWindow):
 		infoBox.show()
 	
 	def prevItemPlaylist(self):
-		self.player.playlist().previous()
-	
+		try:
+			self.player.playlist().previous()
+		except:
+			self.displayHelp()
+
 	def nextItemPlaylist(self):
-		self.player.playlist().next()
+		try:
+			self.player.playlist().next()
+		except:
+			self.displayHelp()
 	
 	def closeEvent(self, *args):
 		qApp.quit()
-			
+
+# convert from milliseconds to hh:mm:ss
+def hhmmss(ms):
+    s = round(ms / 1000)
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return (f'{h}:{m}:{s}') if h else (f'{m}:{s}')			
 	
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
