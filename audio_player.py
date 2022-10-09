@@ -3,7 +3,7 @@ from os.path import expanduser
 from PyQt5.QtWidgets import *
 from PyQt5.QtMultimedia import *
 from PyQt5.QtCore import *
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QPixmap
 
 class MainWindow(QMainWindow):
 	def __init__(self):
@@ -12,10 +12,10 @@ class MainWindow(QMainWindow):
 		self.currentPlaylist = QMediaPlaylist()
 		self.player = QMediaPlayer()
 		self.userAction = -1			#0-stopped, 1-playing 2-paused
+		self.player.currentMediaChanged.connect(self.row_changed)
 		self.player.positionChanged.connect(self.position_changed)
 		self.player.stateChanged.connect(self.qmp_stateChanged)
 		self.player.durationChanged.connect(self.duration_changed)
-		self.player.positionChanged.connect(self.qmp_volumeChanged)
 		self.player.setVolume(0)
 
 		#Add Status bar
@@ -25,6 +25,7 @@ class MainWindow(QMainWindow):
 	def homeScreen(self):
 		#Set title of the MainWindow
 		self.setWindowTitle('Music Player')
+		self.setWindowIcon(QIcon('icons/main.png'))
 		
 		#Create Menubar
 		self.createMenubar()
@@ -60,17 +61,24 @@ class MainWindow(QMainWindow):
 		playlistControls = QHBoxLayout()
 		
 		#creating buttons
-		playBtn = QPushButton('Play')		#play button
-		pauseBtn = QPushButton('Pause')		#pause button
-		stopBtn = QPushButton('Stop')		#stop button
+		playBtn = QPushButton()
+		playBtn.setIcon(QIcon('icons/play.png'))
+		pauseBtn = QPushButton()
+		pauseBtn.setIcon(QIcon('icons/pause.png'))
+		stopBtn = QPushButton()
+		stopBtn.setIcon(QIcon('icons/stop.png'))
 		
 		#creating play controls
-		prevBtn = QPushButton('Prev Song')
-		nextBtn = QPushButton('Next Song')
+		prevBtn = QPushButton()
+		prevBtn.setIcon(QIcon('icons/prev.png'))
+		nextBtn = QPushButton()
+		nextBtn.setIcon(QIcon('icons/next.png'))
 
 		#creating playlist controls
 		addBtn = QPushButton('Add Files')
+		addBtn.setIcon(QIcon('icons/add-list.png'))
 		delBtn = QPushButton('Remove')
+		delBtn.setIcon(QIcon('icons/bin.png'))
 		self.playModeBtn = QPushButton('Play Mode')
 		self.playModeBtn.setIcon(QIcon('icons/loop_off.png'))
 
@@ -101,12 +109,14 @@ class MainWindow(QMainWindow):
 		volumeSlider.setTracking(False)
 		volumeSlider.sliderMoved.connect(self.volumePosition)
 
-		seekVolumeLabel1 = QLabel('0')
+		seekVolumeLabel1 = QLabel()
 		seekVolumeLabel1.setMinimumSize(50, 0)
 		seekVolumeLabel1.setAlignment(Qt.AlignCenter)
-		seekVolumeLabel2 = QLabel('100')
+		seekVolumeLabel1.setPixmap(QPixmap('icons/volume_off.png'))
+		seekVolumeLabel2 = QLabel()
 		seekVolumeLabel2.setMinimumSize(50, 0)
 		seekVolumeLabel2.setAlignment(Qt.AlignCenter)
+		seekVolumeLabel2.setPixmap(QPixmap('icons/volume.png'))
 		seekVolumeLayout.addWidget(seekVolumeLabel1)
 		seekVolumeLayout.addWidget(volumeSlider)
 		seekVolumeLayout.addWidget(seekVolumeLabel2)		
@@ -130,6 +140,7 @@ class MainWindow(QMainWindow):
 		#playlist widget
 		self.listWidget = QListWidget()
 		self.listWidget.itemDoubleClicked.connect(self.playlistHandler)
+		self.listWidget.setStyleSheet('min-height: 200px;')
 		playlistLayout.addWidget(self.listWidget)
 
 		#playlist control button handlers
@@ -207,11 +218,6 @@ class MainWindow(QMainWindow):
 		if isinstance(sender,QSlider):
 			if self.player.isSeekable():
 				self.player.setVolume(position)
-			
-	def qmp_volumeChanged(self):
-		sliderLayout = self.centralWidget().layout().itemAt(1).layout()
-		volume = str(self.player.volume())
-		sliderLayout.itemAt(0).widget().setText(volume)
 		
 	def increaseVolume(self):
 		vol = self.player.volume()
@@ -273,7 +279,7 @@ class MainWindow(QMainWindow):
 
 		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.CurrentItemInLoop:
 			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Random)
-			self.playModeBtn.setIcon(QIcon('icons/random.png'))
+			self.playModeBtn.setIcon(QIcon('icons/shuffle.png'))
 
 		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.Random:
 			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Sequential)
@@ -282,16 +288,20 @@ class MainWindow(QMainWindow):
 	def playlistHandler(self):
 		index = self.listWidget.currentIndex().row()
 		self.currentPlaylist.setCurrentIndex(index)
+	
+	def row_changed(self):
+		index = self.currentPlaylist.currentIndex()
+		self.listWidget.setCurrentRow(index)
 			
 	def info(self):
 		infoAc = QAction('Info', self)
-		infoAc.setShortcut('Ctrl+I')
-		infoAc.setStatusTip('Help (Ctrl+I)')
+		infoAc.setShortcut('F1')
+		infoAc.setStatusTip('Help (F1)')
 		infoAc.triggered.connect(self.displayHelp)
 		return infoAc
 	
 	def displayHelp(self):
-		fullText = '''Select audio: menu 'File' or 'Ctrl+O'<br>
+		fullText = '''Select audio: button 'Add Files' or 'Ctrl+O'<br>
 					  Select folder: menu 'File' or 'Ctrl+D'
 					  <hr>Author: Dima Sakovski'''
 		infoBox = QMessageBox(self)
