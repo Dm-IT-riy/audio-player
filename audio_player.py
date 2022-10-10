@@ -47,8 +47,10 @@ class MainWindow(QMainWindow):
 	def createMenubar(self):
 		menubar = self.menuBar()
 		filemenu = menubar.addMenu('File')
-		filemenu.addAction(self.fileOpen())
+		filemenu.addAction(self.filesOpen())
 		filemenu.addAction(self.folderOpen())
+		filemenu.addAction(self.save_playlist())
+		filemenu.addAction(self.load_playlist())
 		menubar.addAction(self.info())
 	
 	def addControls(self):
@@ -229,19 +231,18 @@ class MainWindow(QMainWindow):
 		vol = max(vol-1, 0)
 		self.player.setVolume(vol)
 	
-	def fileOpen(self):
-		fileAc = QAction('Open File',self)
+	def filesOpen(self):
+		fileAc = QAction('Open Files',self)
 		fileAc.setShortcut('Ctrl+O')
-		fileAc.setStatusTip('Open File')
+		fileAc.setStatusTip('Open Files')
 		fileAc.triggered.connect(self.openFiles)
 		return fileAc
 
 	def openFiles(self):
 		filesChoosen = QFileDialog.getOpenFileUrls(self, 'Open Music File', QUrl().fromLocalFile(expanduser('~')), 'Audio (*.mp3 *.ogg *.wav)')
-		if filesChoosen != None:
-			for file in filesChoosen[0]:
-				self.currentPlaylist.addMedia(QMediaContent(file))
-				self.listWidget.addItem(file.fileName())
+		for file in filesChoosen[0]:
+			self.currentPlaylist.addMedia(QMediaContent(file))
+			self.listWidget.addItem(file.fileName())
 	
 	def folderOpen(self):
 		folderAc = QAction('Open Folder',self)
@@ -250,18 +251,45 @@ class MainWindow(QMainWindow):
 		folderAc.triggered.connect(self.addFiles)
 		return folderAc
 
+	def load_playlist(self):
+		playlistAc = QAction('Load Playlist', self)
+		playlistAc.setShortcut('Ctrl+L')
+		playlistAc.setStatusTip('Load Playlist')
+		playlistAc.triggered.connect(self.playlist_action_load)
+		return playlistAc
+
+	def save_playlist(self):
+		playlistAc = QAction('Save Playlist', self)
+		playlistAc.setShortcut('Ctrl+S')
+		playlistAc.setStatusTip('Save Playlist')
+		playlistAc.triggered.connect(self.playlist_action_save)
+		return playlistAc
+
+	def playlist_action_save(self):
+		filesChoosen = QFileDialog.getOpenFileUrl(self, 'Choose Save File', QUrl().fromLocalFile(expanduser('~')))
+		self.currentPlaylist.save(filesChoosen[0], 'm3u8')
+
+	def playlist_action_load(self):
+		fileChoosen = QFileDialog.getOpenFileUrl(self, 'Choose Save File', QUrl().fromLocalFile(expanduser('~')), '*.m3u8')
+		if fileChoosen[0].toLocalFile() != '':
+			self.currentPlaylist.clear()
+			self.listWidget.clear()
+			self.currentPlaylist.load(fileChoosen[0], 'm3u8')
+			for row in range(self.currentPlaylist.mediaCount()):
+				item = self.currentPlaylist.media(row).canonicalUrl().fileName()
+				self.listWidget.addItem(item)
+
 	def addFiles(self):
 		folderChoosen = QFileDialog.getExistingDirectory(self, 'Open Music Folder', expanduser('~'))
-		if folderChoosen != None:
-			it = QDirIterator(folderChoosen)
+		it = QDirIterator(folderChoosen)
+		it.next()
+		while it.hasNext():
+			if it.fileInfo().isDir() == False and it.filePath() != '.':
+				fInfo = it.fileInfo()
+				if fInfo.suffix() in ('mp3','ogg','wav'):
+					self.listWidget.addItem(fInfo.fileName())
+					self.currentPlaylist.addMedia(QMediaContent(QUrl.fromLocalFile(it.filePath())))
 			it.next()
-			while it.hasNext():
-				if it.fileInfo().isDir() == False and it.filePath() != '.':
-					fInfo = it.fileInfo()
-					if fInfo.suffix() in ('mp3','ogg','wav'):
-						self.listWidget.addItem(fInfo.fileName())
-						self.currentPlaylist.addMedia(QMediaContent(QUrl.fromLocalFile(it.filePath())))
-				it.next()
 
 	def delFile(self):
 		index = self.listWidget.currentIndex().row()
