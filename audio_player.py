@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
 		filemenu.addAction(self.folderOpen())
 		filemenu.addAction(self.save_playlist())
 		filemenu.addAction(self.load_playlist())
+		filemenu.addAction(self.stream_file())
 		menubar.addAction(self.info())
 	
 	def addControls(self):
@@ -218,18 +219,7 @@ class MainWindow(QMainWindow):
 	def volumePosition(self, position):
 		sender = self.sender()
 		if isinstance(sender,QSlider):
-			if self.player.isSeekable():
-				self.player.setVolume(position)
-		
-	def increaseVolume(self):
-		vol = self.player.volume()
-		vol = min(vol+1, 100)
-		self.player.setVolume(vol)
-		
-	def decreaseVolume(self):
-		vol = self.player.volume()
-		vol = max(vol-1, 0)
-		self.player.setVolume(vol)
+			self.player.setVolume(position)
 	
 	def filesOpen(self):
 		fileAc = QAction('Open Files',self)
@@ -279,6 +269,26 @@ class MainWindow(QMainWindow):
 				item = self.currentPlaylist.media(row).canonicalUrl().fileName()
 				self.listWidget.addItem(item)
 
+	def stream_file(self):
+		streamAc = QAction('Open Stream Media', self)
+		streamAc.setStatusTip('Open Stream Media')
+		streamAc.triggered.connect(self.stream_action)
+		return streamAc
+
+	def stream_action(self):
+		dialog = QInputDialog()
+		dialog.setWindowIcon(QIcon('icons/main.png'))
+		dialog.resize(450, 100)
+		dialog.setWindowTitle('URL Stream Media')
+		dialog.setLabelText('URL to Input:')
+		dialog.setTextValue(r'https://ep256.hostingradio.ru:8052/europaplus256.mp3')
+		if dialog.exec_() == QDialog.Accepted:
+			url = dialog.textValue()
+			self.currentPlaylist.clear()
+			self.listWidget.clear()
+			self.player.setMedia(QMediaContent(QUrl(url)))
+			self.player.play()
+
 	def addFiles(self):
 		folderChoosen = QFileDialog.getExistingDirectory(self, 'Open Music Folder', expanduser('~'))
 		it = QDirIterator(folderChoosen)
@@ -299,7 +309,7 @@ class MainWindow(QMainWindow):
 	def playback_mode(self):
 		if self.currentPlaylist.playbackMode() == QMediaPlaylist.Sequential:
 			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.Loop)
-			self.playModeBtn.setIcon(QIcon("icons/loop_on.png"))
+			self.playModeBtn.setIcon(QIcon('icons/loop_on.png'))
 
 		elif self.currentPlaylist.playbackMode() == QMediaPlaylist.Loop:
 			self.currentPlaylist.setPlaybackMode(QMediaPlaylist.CurrentItemInLoop)
@@ -314,6 +324,7 @@ class MainWindow(QMainWindow):
 			self.playModeBtn.setIcon(QIcon('icons/loop_off.png'))
 
 	def playlistHandler(self):
+		self.player.setPlaylist(self.currentPlaylist)
 		index = self.listWidget.currentIndex().row()
 		self.currentPlaylist.setCurrentIndex(index)
 	
@@ -329,7 +340,9 @@ class MainWindow(QMainWindow):
 		return infoAc
 	
 	def displayHelp(self):
-		fullText = '''Select audio: button 'Add Files' or 'Ctrl+O'<br>
+		fullText = '''Music player with the ability to save and download<br>
+					  a playlist, play streaming media files.
+					  <hr>Select audio: button 'Add Files' or 'Ctrl+O'<br>
 					  Select folder: menu 'File' or 'Ctrl+D'
 					  <hr>Author: Dima Sakovski'''
 		infoBox = QMessageBox(self)
